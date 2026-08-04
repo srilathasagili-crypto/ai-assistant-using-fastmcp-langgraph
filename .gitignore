@@ -1,0 +1,28 @@
+# Secrets / environment
+.env
+.streamlit/secrets.toml
+
+# Virtual environments — CRITICAL: myenv/ was previously committed to git (508MB, 22k+ files).
+# See README.md "Project cleanup" for the one-time command to remove it from history.
+myenv/
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Google Calendar OAuth artifacts (never commit these — they grant calendar access)
+credentials.json
+token.json
+
+# Local data files
+*.sqlite
+*.sqlite3
+/tmp/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
