@@ -34,8 +34,11 @@ memory/
   chat_history.py             # SqliteSaver checkpointer — per-thread conversation memory
   user_profile.py               # Persistent name/preferences store, keyed by user_id
   reminders.py                    # Persistent reminder store
-mcp/
-  server.py                    # Exposes stateless tools over MCP
+mcp_server/
+  server.py                    # Exposes stateless tools over MCP (folder renamed from
+                                # "mcp" to avoid colliding with the real "mcp" PyPI
+                                # package — the Model Context Protocol SDK that
+                                # fastmcp itself depends on)
 tools/
   calculator.py, weather.py, gmail.py    # existing tools (gmail.py extended)
   news.py, web_search.py, calendar_tool.py   # new tools
