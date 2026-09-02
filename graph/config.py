@@ -35,7 +35,7 @@ def get_env_var(key: str, required: bool = True):
 
 
 # Required — the app cannot function at all without a working LLM.
-GROQ_API_KEY = get_env_var("GROQ_API_KEY", required=True)
+GEMINI_API_KEY = get_env_var("GEMINI_API_KEY", required=True)
 
 # Existing optional integrations (previously required — now degrade gracefully instead
 # of crashing the whole app if one key is missing).
@@ -57,7 +57,7 @@ def validate_config() -> dict:
     about disabled features without stopping the app.
     """
     status = {
-        "Groq LLM": bool(GROQ_API_KEY),
+        "Gemini LLM": bool(GEMINI_API_KEY),
         "Weather": bool(OPENWEATHER_API_KEY),
         "Gmail": bool(GMAIL_ADDRESS and GMAIL_APP_PASSWORD),
         "News Search": bool(NEWS_API_KEY),
