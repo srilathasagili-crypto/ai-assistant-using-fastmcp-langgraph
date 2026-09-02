@@ -10,6 +10,12 @@ from memory.chat_history import get_thread_config
 from memory.user_profile import get_profile
 from memory.reminders import get_due_unnotified
 from tools.pdf_extract import extract_pdf_text
+
+from tools.gmail_oauth import (
+    handle_oauth_callback,
+    render_gmail_connection,
+)
+
 from ui.components import (
     apply_theme,
     render_tool_status,
@@ -17,13 +23,16 @@ from ui.components import (
     render_reminder_banner,
 )
 
+
 logger = get_logger("app")
+
 
 st.set_page_config(
     page_title="Intelligent AI Assistant",
     page_icon="🤖",
     layout="wide",
 )
+
 
 apply_theme()
 
@@ -40,8 +49,10 @@ def init_session():
 
     if "thread_id" not in st.session_state:
         st.session_state.thread_id = str(uuid.uuid4())
+
         logger.info(
-            f"Started new conversation thread: {st.session_state.thread_id}"
+            f"Started new conversation thread: "
+            f"{st.session_state.thread_id}"
         )
 
     if "history" not in st.session_state:
@@ -53,17 +64,39 @@ def init_session():
     if "voice_enabled" not in st.session_state:
         st.session_state.voice_enabled = False
 
+    # Gmail OAuth session state
+    if "gmail_credentials" not in st.session_state:
+        st.session_state.gmail_credentials = None
+
 
 def render_history():
     for message in st.session_state.history:
-        role = "user" if isinstance(message, HumanMessage) else "assistant"
+
+        role = (
+            "user"
+            if isinstance(message, HumanMessage)
+            else "assistant"
+        )
 
         with st.chat_message(role):
             st.markdown(message.content)
 
 
 def render_sidebar(status: dict):
+
     st.sidebar.title("⚙️ Assistant")
+
+    # ---------------------------------------------------------
+    # Gmail OAuth
+    # ---------------------------------------------------------
+
+    render_gmail_connection()
+
+    st.sidebar.divider()
+
+    # ---------------------------------------------------------
+    # User name / memory
+    # ---------------------------------------------------------
 
     name_input = st.sidebar.text_input(
         "Your name",
@@ -75,25 +108,46 @@ def render_sidebar(status: dict):
     )
 
     if name_input.strip():
+
         st.session_state.user_id = (
-            name_input.strip().lower().replace(" ", "_")
+            name_input.strip()
+            .lower()
+            .replace(" ", "_")
         )
 
     st.sidebar.divider()
+
+    # ---------------------------------------------------------
+    # Tool status
+    # ---------------------------------------------------------
 
     render_tool_status(status)
 
     st.sidebar.divider()
 
+    # ---------------------------------------------------------
+    # Memory
+    # ---------------------------------------------------------
+
     if st.session_state.user_id:
-        profile = get_profile(st.session_state.user_id)
+
+        profile = get_profile(
+            st.session_state.user_id
+        )
+
         render_memory_status(profile)
+
     else:
+
         st.sidebar.info(
             "Enter your name above to enable long-term memory."
         )
 
     st.sidebar.divider()
+
+    # ---------------------------------------------------------
+    # PDF
+    # ---------------------------------------------------------
 
     st.sidebar.markdown("### 📄 PDF Analysis")
 
@@ -104,23 +158,43 @@ def render_sidebar(status: dict):
 
     st.sidebar.divider()
 
-    st.session_state.voice_enabled = st.sidebar.checkbox(
-        "🎤 Voice mode",
-        value=st.session_state.voice_enabled,
+    # ---------------------------------------------------------
+    # Voice mode
+    # ---------------------------------------------------------
+
+    st.session_state.voice_enabled = (
+        st.sidebar.checkbox(
+            "🎤 Voice mode",
+            value=st.session_state.voice_enabled,
+        )
     )
 
     st.sidebar.divider()
 
+    # ---------------------------------------------------------
+    # Clear chat
+    # ---------------------------------------------------------
+
     if st.sidebar.button("🗑️ Clear chat"):
+
         st.session_state.history = []
-        st.session_state.thread_id = str(uuid.uuid4())
+
+        st.session_state.thread_id = str(
+            uuid.uuid4()
+        )
+
         st.session_state.pdf_uploaded_name = None
+
         st.rerun()
 
     return uploaded_file
 
 
-def handle_pdf_upload(uploaded_file, graph, config):
+def handle_pdf_upload(
+    uploaded_file,
+    graph,
+    config,
+):
     """
     Extract text from a newly uploaded PDF and store it directly
     into the graph's checkpointed state.
@@ -132,43 +206,64 @@ def handle_pdf_upload(uploaded_file, graph, config):
     if uploaded_file is None:
         return
 
-    if st.session_state.pdf_uploaded_name == uploaded_file.name:
+    if (
+        st.session_state.pdf_uploaded_name
+        == uploaded_file.name
+    ):
         return
 
     with st.spinner("Reading PDF..."):
-        text = extract_pdf_text(uploaded_file)
+
+        text = extract_pdf_text(
+            uploaded_file
+        )
 
     if not text:
+
         st.sidebar.error(
             "Couldn't extract text from this PDF "
             "(it may be scanned/image-only)."
         )
+
         return
 
     graph.update_state(
         config,
         {
             "pdf_context": text,
-            "user_id": st.session_state.user_id or "default_user",
+            "user_id": (
+                st.session_state.user_id
+                or "default_user"
+            ),
         },
     )
 
-    st.session_state.pdf_uploaded_name = uploaded_file.name
+    st.session_state.pdf_uploaded_name = (
+        uploaded_file.name
+    )
 
     st.sidebar.success(
-        f"'{uploaded_file.name}' loaded — ask me to summarize it "
-        "or answer questions about it."
+        f"'{uploaded_file.name}' loaded — ask me to "
+        "summarize it or answer questions about it."
     )
 
 
 def handle_voice_input() -> str | None:
+
     try:
-        from streamlit_mic_recorder import mic_recorder
+
+        from streamlit_mic_recorder import (
+            mic_recorder,
+        )
+
     except ImportError:
+
         st.sidebar.warning(
-            "Voice mode needs the 'streamlit-mic-recorder' package "
+            "Voice mode needs the "
+            "'streamlit-mic-recorder' package "
             "(see requirements.txt)."
         )
+
         return None
 
     audio = mic_recorder(
@@ -181,32 +276,56 @@ def handle_voice_input() -> str | None:
         return None
 
     try:
+
         from groq import Groq
         from graph.config import GROQ_API_KEY
 
-        client = Groq(api_key=GROQ_API_KEY)
+        client = Groq(
+            api_key=GROQ_API_KEY
+        )
 
         tmp_path = "/tmp/voice_input.wav"
 
-        with open(tmp_path, "wb") as f:
-            f.write(audio["bytes"])
+        with open(
+            tmp_path,
+            "wb",
+        ) as f:
 
-        with open(tmp_path, "rb") as f:
-            result = client.audio.transcriptions.create(
-                file=f,
-                model="whisper-large-v3",
+            f.write(
+                audio["bytes"]
+            )
+
+        with open(
+            tmp_path,
+            "rb",
+        ) as f:
+
+            result = (
+                client.audio.transcriptions.create(
+                    file=f,
+                    model="whisper-large-v3",
+                )
             )
 
         return result.text
 
     except Exception as e:
-        logger.exception("Voice transcription failed")
-        st.warning(f"Couldn't transcribe audio: {e}")
+
+        logger.exception(
+            "Voice transcription failed"
+        )
+
+        st.warning(
+            f"Couldn't transcribe audio: {e}"
+        )
+
         return None
 
 
 def speak(text: str):
+
     try:
+
         from gtts import gTTS
         import io
 
@@ -227,7 +346,11 @@ def speak(text: str):
         )
 
     except Exception as e:
-        logger.exception("Text-to-speech failed")
+
+        logger.exception(
+            "Text-to-speech failed"
+        )
+
         st.caption(
             f"(voice output unavailable: {e})"
         )
@@ -252,48 +375,106 @@ def extract_reply_text(content) -> str:
     """
 
     if isinstance(content, str):
+
         return content
 
     if isinstance(content, list):
+
         text_parts = []
 
         for item in content:
+
             if isinstance(item, dict):
+
                 if item.get("type") == "text":
-                    text = item.get("text", "")
+
+                    text = item.get(
+                        "text",
+                        "",
+                    )
 
                     if text:
-                        text_parts.append(str(text))
+                        text_parts.append(
+                            str(text)
+                        )
 
             elif isinstance(item, str):
+
                 text_parts.append(item)
 
-        return "\n".join(text_parts).strip()
+        return "\n".join(
+            text_parts
+        ).strip()
 
     if isinstance(content, dict):
+
         if content.get("type") == "text":
-            return str(content.get("text", ""))
+
+            return str(
+                content.get(
+                    "text",
+                    "",
+                )
+            )
 
         if "text" in content:
-            return str(content["text"])
+
+            return str(
+                content["text"]
+            )
 
     return str(content)
 
 
 def main():
-    st.title("🤖 Intelligent AI Assistant")
+
+    st.title(
+        "🤖 Intelligent AI Assistant"
+    )
+
+    # ---------------------------------------------------------
+    # Initialize Streamlit session
+    # ---------------------------------------------------------
 
     init_session()
 
+    # ---------------------------------------------------------
+    # Handle Google OAuth callback
+    # ---------------------------------------------------------
+
+    handle_oauth_callback()
+
+    # ---------------------------------------------------------
+    # Validate configuration
+    # ---------------------------------------------------------
+
     status = validate_config()
 
+    # ---------------------------------------------------------
+    # Build LangGraph
+    # ---------------------------------------------------------
+
     graph = get_graph()
+
+    # ---------------------------------------------------------
+    # Conversation configuration
+    # ---------------------------------------------------------
 
     config = get_thread_config(
         st.session_state.thread_id
     )
 
-    uploaded_file = render_sidebar(status)
+    # ---------------------------------------------------------
+    # Sidebar
+    # ---------------------------------------------------------
+
+    uploaded_file = render_sidebar(
+        status
+    )
+
+    # ---------------------------------------------------------
+    # PDF
+    # ---------------------------------------------------------
 
     handle_pdf_upload(
         uploaded_file,
@@ -301,27 +482,50 @@ def main():
         config,
     )
 
+    # ---------------------------------------------------------
+    # Reminders
+    # ---------------------------------------------------------
+
     if st.session_state.user_id:
+
         render_reminder_banner(
             get_due_unnotified(
                 st.session_state.user_id
             )
         )
 
+    # ---------------------------------------------------------
+    # Chat history
+    # ---------------------------------------------------------
+
     render_history()
+
+    # ---------------------------------------------------------
+    # Text input
+    # ---------------------------------------------------------
 
     user_input = st.chat_input(
         "Ask me anything..."
     )
 
+    # ---------------------------------------------------------
+    # Voice input
+    # ---------------------------------------------------------
+
     if st.session_state.voice_enabled:
+
         voice_text = handle_voice_input()
 
         if voice_text:
+
             user_input = voice_text
 
     if not user_input:
         return
+
+    # ---------------------------------------------------------
+    # User message
+    # ---------------------------------------------------------
 
     user_message = HumanMessage(
         content=user_input
@@ -332,15 +536,26 @@ def main():
     )
 
     with st.chat_message("user"):
-        st.markdown(user_input)
+
+        st.markdown(
+            user_input
+        )
+
+    # ---------------------------------------------------------
+    # Assistant response
+    # ---------------------------------------------------------
 
     with st.chat_message("assistant"):
+
         with st.spinner("Thinking..."):
 
             try:
+
                 result = graph.invoke(
                     {
-                        "messages": [user_message],
+                        "messages": [
+                            user_message
+                        ],
                         "user_id": (
                             st.session_state.user_id
                             or "default_user"
@@ -349,21 +564,25 @@ def main():
                     config=config,
                 )
 
-                # Get the latest AI message
-                latest_message = result["messages"][-1]
+                # Get latest AI message
+                latest_message = (
+                    result["messages"][-1]
+                )
 
-                # Extract clean text from Gemini response
+                # Extract clean Gemini response
                 reply = extract_reply_text(
                     latest_message.content
                 )
 
                 if not reply:
+
                     reply = (
                         "I received an empty response "
                         "from the model."
                     )
 
             except Exception:
+
                 logger.exception(
                     "Error while processing user input"
                 )
@@ -373,16 +592,30 @@ def main():
                     "Please try again."
                 )
 
-        # Display clean assistant response
-        st.markdown(reply)
+        # -----------------------------------------------------
+        # Display response
+        # -----------------------------------------------------
 
-        # Optional voice output
+        st.markdown(
+            reply
+        )
+
+        # -----------------------------------------------------
+        # Voice output
+        # -----------------------------------------------------
+
         if st.session_state.voice_enabled:
+
             speak(reply)
 
-    # Save clean response to chat history
+    # ---------------------------------------------------------
+    # Save assistant response
+    # ---------------------------------------------------------
+
     st.session_state.history.append(
-        AIMessage(content=reply)
+        AIMessage(
+            content=reply
+        )
     )
 
 
